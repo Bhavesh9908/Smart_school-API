@@ -111,7 +111,7 @@ def upload_image():
         </form>
     '''
 
-# ✅ Final section for Render & LAN access
+# ✅ Enable external access (for Render or public servers)
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 10000))  # default 10000 for local testing
     app.run(host="0.0.0.0", port=port)
