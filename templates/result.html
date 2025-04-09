@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Prediction Results</title>
+</head>
+<body>
+    <h2>Detected Items & Nutrition Info</h2>
+    <ul>
+        {% for pred in predictions %}
+            <li>{{ pred }}</li>
+        {% endfor %}
+    </ul>
+
+    <h3>Annotated Image:</h3>
+    <img src="{{ image_file }}" width="600">
+    <br><br>
+    <a href="/">Predict Another</a>
+</body>
+</html>
