@@ -7,9 +7,9 @@ from werkzeug.utils import secure_filename
 import base64
 
 app = Flask(__name__)
-model = YOLO("perfect.pt")  # ✅ Use relative path if running in same folder
+model = YOLO("perfect.pt")  # ✅ Load your trained model
 
-# ✅ Nutrition metadata
+# ✅ Nutrition data
 nutrition_info = {
     "Chapati": {"calories": 120, "protein": 3, "fat": 3, "carbs": 20},
     "Chawali": {"calories": 220, "protein": 13, "fat": 3, "carbs": 35},
@@ -25,11 +25,11 @@ def upload_image():
         image_file = request.files["image"]
         if image_file:
             filename = secure_filename(image_file.filename)
-            image_path = os.path.join("uploads", filename)
             os.makedirs("uploads", exist_ok=True)
+            image_path = os.path.join("uploads", filename)
             image_file.save(image_path)
 
-            # ✅ Run detection
+            # ✅ Detection
             img = cv2.imread(image_path)
             results = model(image_path)
             output_texts = []
@@ -47,7 +47,7 @@ def upload_image():
 
                     class_name = names.get(cls_id, "Unknown")
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 1)
 
                     if class_name in nutrition_info:
                         nutrients = nutrition_info[class_name]
@@ -57,14 +57,12 @@ def upload_image():
                         label = f"{class_name} ({conf:.2f})"
                         nutri_text = "Nutrition: N/A"
 
-                    # Text config
                     font = cv2.FONT_HERSHEY_SIMPLEX
                     font_scale = 0.4
                     thickness = 1
                     text_color = (0, 0, 0)
                     bg_color = (255, 255, 255)
 
-                    # Label text
                     for idx, line in enumerate([label, nutri_text]):
                         (w, h), _ = cv2.getTextSize(line, font, font_scale, thickness)
                         y_offset = y1 - 10 - idx * (h + 6)
@@ -73,22 +71,36 @@ def upload_image():
                         cv2.rectangle(img, (x1, y_offset - h), (x1 + w + 4, y_offset + 2), bg_color, -1)
                         cv2.putText(img, line, (x1 + 2, y_offset), font, font_scale, text_color, thickness, cv2.LINE_AA)
 
-                    output_texts.append(f"• {label} - {nutri_text}")
+                    output_texts.append(f"{label} → {nutri_text}")
 
-            # Convert image to display
+            # Convert to base64 for browser
             _, buffer = cv2.imencode('.jpg', img)
             img_str = base64.b64encode(buffer).decode('utf-8')
 
             return render_template_string("""
-                <h2>🍱 Detected Items & Nutrition Info</h2>
-                <ul>
-                {% for line in output_texts %}
-                    <li>{{ line }}</li>
-                {% endfor %}
-                </ul>
-                <h3>Annotated Image:</h3>
-                <img src="data:image/jpeg;base64,{{ img_str }}" style="max-width:800px;"><br><br>
-                <a href="/">🔄 Predict Another</a>
+                <html>
+                <head>
+                    <title>Food Nutrition Results</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; padding: 20px; text-align: center; }
+                        ul { list-style: none; padding: 0; }
+                        li { margin: 8px 0; font-size: 14px; }
+                        img { max-width: 90%; height: auto; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.2); }
+                    </style>
+                </head>
+                <body>
+                    <h2>🍱 Nutrition Analysis Result</h2>
+                    <ul>
+                    {% for line in output_texts %}
+                        <li>{{ line }}</li>
+                    {% endfor %}
+                    </ul>
+                    <h3>📸 Annotated Image:</h3>
+                    <img src="data:image/jpeg;base64,{{ img_str }}">
+                    <br><br>
+                    <a href="/">🔁 Predict Another</a>
+                </body>
+                </html>
             """, output_texts=output_texts, img_str=img_str)
 
     return '''
@@ -99,8 +111,7 @@ def upload_image():
         </form>
     '''
 
-# ✅ Final section for Render/Cloud deployment
+# ✅ Enable external access (for Render or public servers)
 if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 10000))  # default 10000 for local testing
     app.run(host="0.0.0.0", port=port)
