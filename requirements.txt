@@ -2,6 +2,7 @@ flask
 ultralytics
 torch
 werkzeug
+cloudinary
 Pillow
 numpy
 gunicorn
