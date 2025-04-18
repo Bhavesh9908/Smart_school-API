@@ -9,6 +9,7 @@ import cloudinary
 import cloudinary.uploader
 import uuid
 import json
+import urllib.request
 
 # === Cloudinary Config ===
 cloudinary.config(
@@ -42,7 +43,6 @@ def upload_image():
         os.makedirs("uploads", exist_ok=True)
         image_path = os.path.join("uploads", filename)
 
-        # Resize and save image
         img = Image.open(image_file.stream)
         img = img.resize((800, 600))
         img.save(image_path)
@@ -50,7 +50,6 @@ def upload_image():
         img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
         results = model(image_path)
         detected_items = {}
-        total_calories = 0
 
         for result in results:
             boxes = result.boxes
@@ -70,14 +69,9 @@ def upload_image():
 
                 if class_name in nutrition_info:
                     detected_items[class_name] = detected_items.get(class_name, 0) + 1
-                    total_calories += nutrition_info[class_name]["calories"]
 
         if not detected_items:
             return "<script>alert('No recognizable food item detected. Please upload a valid food image.'); window.location.href='/'</script>"
-
-        # Total calories display
-        cv2.putText(img_cv, f"Total Calories: {total_calories} kcal", (10, 25),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
         # Save and upload image to Cloudinary
         annotated_name = "annotated_" + filename
@@ -120,63 +114,77 @@ def upload_image():
 
 @app.route("/calculate", methods=["POST"])
 def calculate_nutrition():
-    total = {"calories": 0, "protein": 0, "fat": 0, "carbs": 0}
-    food_data = {}
+    total_nutrition = {"calories": 0, "protein": 0, "fat": 0, "carbs": 0}
     cloud_url = request.form["image_url"]
+    food_data = {}
 
     for item in nutrition_info:
         qty = request.form.get(item)
         if qty:
             try:
                 qty = float(qty)
-                data = nutrition_info[item]
-                scale = qty if data["type"] == "count" else qty / 100
+                info = nutrition_info[item]
+                scale = qty if info["type"] == "count" else qty / 100
 
                 food_data[item] = {
-                    "calories": round(data["calories"] * scale, 1),
-                    "protein": round(data["protein"] * scale, 1),
-                    "fat": round(data["fat"] * scale, 1),
-                    "carbs": round(data["carbs"] * scale, 1),
-                    "quantity": int(qty),
-                    "unit": data["type"]
+                    "calories": round(info["calories"] * scale, 1),
+                    "protein": round(info["protein"] * scale, 1),
+                    "fat": round(info["fat"] * scale, 1),
+                    "carbs": round(info["carbs"] * scale, 1),
+                    "quantity": qty,
+                    "unit": info["type"]
                 }
 
-                total["calories"] += data["calories"] * scale
-                total["protein"] += data["protein"] * scale
-                total["fat"] += data["fat"] * scale
-                total["carbs"] += data["carbs"] * scale
+                total_nutrition["calories"] += info["calories"] * scale
+                total_nutrition["protein"] += info["protein"] * scale
+                total_nutrition["fat"] += info["fat"] * scale
+                total_nutrition["carbs"] += info["carbs"] * scale
             except:
                 continue
 
-    # === Generate JSON ===
-    final_json = {
-        "annotated_image_url": cloud_url,
+    total_calories = round(total_nutrition["calories"], 1)
+
+    # Download annotated image
+    response = urllib.request.urlopen(cloud_url)
+    img_array = np.asarray(bytearray(response.read()), dtype=np.uint8)
+    image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+
+    # Annotate with total calories
+    cv2.putText(image, f"Total Calories: {total_calories} kcal", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+
+    # Save final image
+    os.makedirs("uploads", exist_ok=True)
+    final_path = os.path.join("uploads", f"final_{uuid.uuid4().hex}.jpg")
+    cv2.imwrite(final_path, image)
+
+    # Upload final image to Cloudinary
+    final_uploaded = cloudinary.uploader.upload(final_path)
+    final_url = final_uploaded["secure_url"]
+
+    # Build final JSON
+    result = {
+        "annotated_image_url": final_url,
         "nutritional_summary": food_data,
         "total": {
-            "calories": round(total["calories"], 1),
-            "protein": round(total["protein"], 1),
-            "fat": round(total["fat"], 1),
-            "carbs": round(total["carbs"], 1)
+            "calories": total_calories,
+            "protein": round(total_nutrition["protein"], 1),
+            "fat": round(total_nutrition["fat"], 1),
+            "carbs": round(total_nutrition["carbs"], 1)
         }
     }
 
-    # === Save JSON locally ===
-    os.makedirs("uploads", exist_ok=True)
+    # Save JSON locally and upload to Cloudinary
     json_filename = f"nutrition_{uuid.uuid4().hex}.json"
     json_path = os.path.join("uploads", json_filename)
     with open(json_path, "w") as f:
-        json.dump(final_json, f, indent=2)
+        json.dump(result, f, indent=2)
 
-    # === Upload JSON to Cloudinary ===
     uploaded_json = cloudinary.uploader.upload(json_path, resource_type="raw")
     json_url = uploaded_json["secure_url"]
+    result["nutrition_json_url"] = json_url
 
-    # === Return Final JSON Response ===
-    return jsonify({
-        "annotated_image_url": cloud_url,
-        "nutrition_json_url": json_url,
-        **final_json
-    })
+    return jsonify(result)
 
 @app.route("/uploads/<filename>")
 def uploaded_file(filename):

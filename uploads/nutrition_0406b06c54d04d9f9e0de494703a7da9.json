@@ -1,0 +1,43 @@
+{
+  "annotated_image_url": "https://res.cloudinary.com/da4mdjezu/image/upload/v1744975528/cd0aq0axcmvdk5jeq532.jpg",
+  "nutritional_summary": {
+    "Rice": {
+      "calories": 204.0,
+      "protein": 4.1,
+      "fat": 0.5,
+      "carbs": 45.9,
+      "quantity": 102,
+      "unit": "gram"
+    },
+    "Curry": {
+      "calories": 1800.0,
+      "protein": 50.0,
+      "fat": 90.0,
+      "carbs": 200.0,
+      "quantity": 1000,
+      "unit": "gram"
+    },
+    "Chapati": {
+      "calories": 1440.0,
+      "protein": 36.0,
+      "fat": 36.0,
+      "carbs": 240.0,
+      "quantity": 12,
+      "unit": "count"
+    },
+    "Mixed Veg": {
+      "calories": 150.0,
+      "protein": 4.0,
+      "fat": 7.0,
+      "carbs": 16.0,
+      "quantity": 100,
+      "unit": "gram"
+    }
+  },
+  "total": {
+    "calories": 3594.0,
+    "protein": 94.1,
+    "fat": 133.5,
+    "carbs": 501.9
+  }
+}
