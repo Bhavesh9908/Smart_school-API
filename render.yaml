@@ -2,8 +2,12 @@ services:
   - type: web
     name: smart-school-api
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    startCommand: gunicorn app:app
+    buildCommand: ""
     envVars:
-      - key: FLASK_ENV
-        value: production
+      - key: CLOUDINARY_CLOUD_NAME
+        value: da4mdjezu
+      - key: CLOUDINARY_API_KEY
+        value: 493281977135412
+      - key: CLOUDINARY_API_SECRET
+        value: P5xxU64uEjNZy6wITFM5pD5Qu54
