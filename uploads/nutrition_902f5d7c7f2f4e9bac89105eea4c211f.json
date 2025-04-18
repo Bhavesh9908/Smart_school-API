@@ -1,0 +1,27 @@
+{
+  "annotated_image_url": "https://res.cloudinary.com/da4mdjezu/image/upload/v1744978666/pbgkphze8gg9doaemfzo.jpg",
+  "nutritional_summary": {
+    "Rice": {
+      "calories": 200.0,
+      "protein": 4.0,
+      "fat": 0.5,
+      "carbs": 45.0,
+      "quantity": 100.0,
+      "unit": "gram"
+    },
+    "Mixed Veg": {
+      "calories": 150.0,
+      "protein": 4.0,
+      "fat": 7.0,
+      "carbs": 16.0,
+      "quantity": 100.0,
+      "unit": "gram"
+    }
+  },
+  "total": {
+    "calories": 350.0,
+    "protein": 8.0,
+    "fat": 7.5,
+    "carbs": 61.0
+  }
+}
