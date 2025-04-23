@@ -19,8 +19,10 @@ cloudinary.config(
 )
 
 app = Flask(__name__)
-model = YOLO("perfect.pt")
-quality_model = YOLO("good-bad.pt")  # Load food quality classification model
+
+# Load models
+detection_model = YOLO("perfect.pt")
+quality_model = YOLO("good-bad.pt")
 
 # Nutrition info
 nutrition_info = {
@@ -44,12 +46,22 @@ def upload_image():
         os.makedirs("uploads", exist_ok=True)
         image_path = os.path.join("uploads", filename)
 
-        img = Image.open(image_file.stream)
-        img = img.resize((800, 600))
-        img.save(image_path)
+        img = Image.open(image_file.stream).convert("RGB")
+        img_resized = img.resize((800, 600))
+        img_resized.save(image_path)
 
-        img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-        results = model(image_path)
+        # Convert for OpenCV
+        img_cv = cv2.cvtColor(np.array(img_resized), cv2.COLOR_RGB2BGR)
+
+        # === Step 1: Quality Classification ===
+        quality_result = quality_model(img_resized)[0].probs
+        quality_class_id = quality_result.top1
+        quality_conf = quality_result.top1conf
+        quality_label = quality_model.names[quality_class_id]
+        quality_text = f"Food Quality: {quality_label.upper()} ({quality_conf:.2f})"
+
+        # === Step 2: Detection ===
+        results = detection_model(image_path)
         detected_items = {}
 
         for result in results:
@@ -64,7 +76,6 @@ def upload_image():
                 class_name = names.get(cls_id, "Unknown")
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 cv2.rectangle(img_cv, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
                 label = f"{class_name} ({conf:.2f})"
                 cv2.putText(img_cv, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
 
@@ -74,7 +85,10 @@ def upload_image():
         if not detected_items:
             return "<script>alert('No recognizable food item detected. Please upload a valid food image.'); window.location.href='/'</script>"
 
-        # Save and upload image to Cloudinary
+        # Annotate image with quality info
+        cv2.putText(img_cv, quality_text, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 0, 0), 2)
+
+        # Save and upload annotated image
         annotated_name = "annotated_" + filename
         annotated_path = os.path.join("uploads", annotated_name)
         cv2.imwrite(annotated_path, img_cv)
@@ -95,10 +109,12 @@ def upload_image():
             <head><title>Confirm Quantities</title></head>
             <body style="font-family:sans-serif;text-align:center;">
                 <h2>Confirm Quantity for Detected Items</h2>
+                <p style="font-size:18px;color:blue;"><strong>{quality_text}</strong></p>
                 <form action="/calculate" method="POST">
                     {quantity_form}
                     <input type="hidden" name="image_url" value="{cloud_url}">
-                    <input type="hidden" name="local_path" value="{annotated_path}">
+                    <input type="hidden" name="quality_label" value="{quality_label}">
+                    <input type="hidden" name="quality_conf" value="{quality_conf}">
                     <br><input type="submit" value="Calculate Nutrition">
                 </form>
                 <img src="{cloud_url}" width="80%">
@@ -118,7 +134,8 @@ def upload_image():
 def calculate_nutrition():
     total_nutrition = {"calories": 0, "protein": 0, "fat": 0, "carbs": 0}
     cloud_url = request.form["image_url"]
-    local_path = request.form["local_path"]
+    quality_label = request.form.get("quality_label", "unknown")
+    quality_conf = float(request.form.get("quality_conf", 0.0))
     food_data = {}
 
     for item in nutrition_info:
@@ -147,34 +164,29 @@ def calculate_nutrition():
 
     total_calories = round(total_nutrition["calories"], 1)
 
-    # Load image from Cloudinary URL
+    # Download annotated image
     response = urllib.request.urlopen(cloud_url)
     img_array = np.asarray(bytearray(response.read()), dtype=np.uint8)
     image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
 
-    # Annotate image with total calories
-    cv2.putText(image, f"Total Calories: {total_calories} kcal", (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+    # Re-annotate quality and total calories
+    quality_text = f"Food Quality: {quality_label.upper()} ({quality_conf:.2f})"
+    cv2.putText(image, quality_text, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+    cv2.putText(image, f"Total Calories: {total_calories} kcal", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
-    # Save final annotated image
-    os.makedirs("uploads", exist_ok=True)
+    # Save and upload final image
     final_path = os.path.join("uploads", f"final_{uuid.uuid4().hex}.jpg")
     cv2.imwrite(final_path, image)
-
-    # Upload final image to Cloudinary
     final_uploaded = cloudinary.uploader.upload(final_path)
     final_url = final_uploaded["secure_url"]
-
-    # Run food quality model
-    quality_result = quality_model(local_path)[0]
-    cls_id = int(quality_result.boxes.cls[0].item()) if quality_result.boxes else -1
-    class_name = quality_result.names.get(cls_id, "Unknown") if cls_id >= 0 else "Unknown"
-    quality_label = "Good" if class_name.lower() == "good" else "Bad"
 
     # Build final JSON
     result = {
         "annotated_image_url": final_url,
-        "food_quality": quality_label,
+        "food_quality": {
+            "prediction": quality_label,
+            "confidence": round(quality_conf, 2)
+        },
         "nutritional_summary": food_data,
         "total": {
             "calories": total_calories,
@@ -184,12 +196,20 @@ def calculate_nutrition():
         }
     }
 
+    # Save JSON locally and to Cloudinary
+    json_filename = f"nutrition_{uuid.uuid4().hex}.json"
+    json_path = os.path.join("uploads", json_filename)
+    with open(json_path, "w") as f:
+        json.dump(result, f, indent=2)
+
+    uploaded_json = cloudinary.uploader.upload(json_path, resource_type="raw")
+    result["nutrition_json_url"] = uploaded_json["secure_url"]
+
     return jsonify(result)
 
 @app.route("/uploads/<filename>")
 def uploaded_file(filename):
     return send_from_directory("uploads", filename)
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)), debug=False)

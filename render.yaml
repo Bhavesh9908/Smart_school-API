@@ -2,8 +2,9 @@ services:
   - type: web
     name: smart-school-api
     env: python
-    startCommand: gunicorn app:app
-    buildCommand: ""
+    plan: free
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    buildCommand: "pip install -r requirements.txt"
     envVars:
       - key: CLOUDINARY_CLOUD_NAME
         value: da4mdjezu
