@@ -45,7 +45,6 @@ def upload_image():
         image_path = os.path.join("uploads", filename)
 
         img = Image.open(image_file.stream)
-        img = img.resize((800, 600))
         img.save(image_path)
 
         img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
@@ -165,13 +164,25 @@ def calculate_nutrition():
     final_uploaded = cloudinary.uploader.upload(final_path)
     final_url = final_uploaded["secure_url"]
 
-    # Run food quality model
+    # === Food Quality Classification using .probs ===
     quality_result = quality_model(local_path)[0]
-    cls_id = int(quality_result.boxes.cls[0].item()) if quality_result.boxes else -1
-    class_name = quality_result.names.get(cls_id, "Unknown") if cls_id >= 0 else "Unknown"
-    quality_label = "Good" if class_name.lower() == "good" else "Bad"
+    names = quality_result.names
 
-    # Build final JSON
+    if hasattr(quality_result, "probs") and quality_result.probs is not None:
+        confs = quality_result.probs.data.cpu().numpy()
+        cls_id = int(np.argmax(confs))
+        conf = float(confs[cls_id])
+        class_name = names[cls_id].lower() if isinstance(names, list) else names.get(cls_id, "").lower()
+        print(f"Food Quality Prediction → {class_name}, Confidence: {conf:.2f}")
+
+        if class_name == "good" and conf > 0.5:
+            quality_label = "Good"
+        else:
+            quality_label = "Bad"
+    else:
+        print("No classification probabilities found — defaulting to Bad")
+        quality_label = "Bad"
+
     result = {
         "annotated_image_url": final_url,
         "food_quality": quality_label,
@@ -189,7 +200,6 @@ def calculate_nutrition():
 @app.route("/uploads/<filename>")
 def uploaded_file(filename):
     return send_from_directory("uploads", filename)
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)), debug=False)
