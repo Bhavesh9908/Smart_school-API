@@ -1,1 +1,0 @@
-{"image_path": "uploads\\annotated_bad_food.jpeg", "detected_items": {"Curry": {"count": 2, "boxes": [[592, 111, 796, 207], [0, 58, 343, 208]]}, "Chapati": {"count": 1, "boxes": [[0, 251, 420, 516]]}, "Rice": {"count": 1, "boxes": [[465, 264, 800, 470]]}}, "cloud_url": "https://res.cloudinary.com/da4mdjezu/image/upload/v1745476407/j1oiiaclmmcypzglbswf.jpg"}
