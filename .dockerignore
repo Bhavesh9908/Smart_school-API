@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.env
+.git
+.gitignore
+*.md
+*.db
+tests/
+data/
+models/
+*.pt
+*.h5
+*.pkl
