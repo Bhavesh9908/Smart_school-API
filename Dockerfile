@@ -1,31 +1,23 @@
-# Use valid official PyTorch image (CPU-only)
-FROM pytorch/pytorch:2.0.0-cpu
+FROM python:3.11-slim
 
-# Prevent .pyc and buffer logs
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Set the working directory
 WORKDIR /app
 
-# Install system dependencies required for opencv-python-headless
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libglib2.0-0 \
-    libgl1-mesa-glx \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install them
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy all files into the container
+# Copy all project files
 COPY . .
 
-# Expose port (Flask default)
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Expose port (Flask default is 5000)
 EXPOSE 5000
 
-# Command to run app with Gunicorn
+# Run the Flask app using gunicorn
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
