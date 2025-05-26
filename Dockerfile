@@ -1,23 +1,25 @@
-FROM python:3.11-slim
+FROM python:3.11-slim as base
 
-# Install system dependencies
+# System dependencies
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    gcc \
     libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
+    libgl1 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory
+# Set work directory
 WORKDIR /app
 
-# Copy all project files
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy app files
 COPY . .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Expose port (Flask default is 5000)
+# Expose the port
 EXPOSE 5000
 
-# Run the Flask app using gunicorn
+# Use gunicorn to run the Flask app
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
