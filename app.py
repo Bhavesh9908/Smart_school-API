@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, render_template_string, send_from_directory, jsonify
 from werkzeug.utils import secure_filename
 import os
 import cv2
@@ -8,9 +8,10 @@ from ultralytics import YOLO
 import cloudinary
 import cloudinary.uploader
 import uuid
+import json
 import urllib.request
 
-# Cloudinary Config
+# === Cloudinary Config ===
 cloudinary.config(
     cloud_name="da4mdjezu",
     api_key="493281977135412",
@@ -19,8 +20,9 @@ cloudinary.config(
 
 app = Flask(__name__)
 model = YOLO("perfect.pt")
-quality_model = YOLO("good-bad.pt")
+quality_model = YOLO("good-bad.pt")  # Load food quality classification model
 
+# Nutrition info
 nutrition_info = {
     "Rice": {"calories": 200, "protein": 4, "fat": 0.5, "carbs": 45, "type": "gram"},
     "Curry": {"calories": 180, "protein": 5, "fat": 9, "carbs": 20, "type": "gram"},
@@ -36,7 +38,7 @@ def upload_image():
     if request.method == "POST":
         image_file = request.files["image"]
         if not image_file:
-            return jsonify({"error": "No image uploaded"}), 400
+            return "<script>alert('Please upload a valid image!'); window.location.href='/'</script>"
 
         filename = secure_filename(image_file.filename)
         os.makedirs("uploads", exist_ok=True)
@@ -69,77 +71,131 @@ def upload_image():
                     detected_items[class_name] = detected_items.get(class_name, 0) + 1
 
         if not detected_items:
-            return jsonify({"error": "No recognizable food detected"}), 400
+            return "<script>alert('No recognizable food item detected. Please upload a valid food image.'); window.location.href='/'</script>"
 
-        # Save and upload annotated image
-        annotated_path = os.path.join("uploads", "annotated_" + filename)
+        # Save and upload image to Cloudinary
+        annotated_name = "annotated_" + filename
+        annotated_path = os.path.join("uploads", annotated_name)
         cv2.imwrite(annotated_path, img_cv)
+
         uploaded = cloudinary.uploader.upload(annotated_path)
         cloud_url = uploaded["secure_url"]
 
-        # Calculate Nutrition based on detected items
-        total_nutrition = {"calories": 0, "protein": 0, "fat": 0, "carbs": 0}
-        food_data = {}
-
+        # Quantity input form
+        quantity_form = ""
         for item in detected_items:
-            info = nutrition_info[item]
-            if info["type"] == "count":
-                qty = detected_items[item]  # Each item counts as 1, 2, 3, etc.
+            if nutrition_info[item]["type"] == "count":
+                quantity_form += f'<label>{item} (count):</label><input type="number" name="{item}" min="0" value="{detected_items[item]}"><br>'
             else:
-                qty = 100  # Assume 100g for all gram-based items
+                quantity_form += f'<label>{item} (grams):</label><input type="number" name="{item}" min="0" value="100"><br>'
 
-            scale = qty if info["type"] == "count" else qty / 100  # Scaling based on 100g or count
-
-            food_data[item] = {
-                "calories": round(info["calories"] * scale, 1),
-                "protein": round(info["protein"] * scale, 1),
-                "fat": round(info["fat"] * scale, 1),
-                "carbs": round(info["carbs"] * scale, 1),
-                "quantity": qty,
-                "unit": info["type"]
-            }
-
-            total_nutrition["calories"] += info["calories"] * scale
-            total_nutrition["protein"] += info["protein"] * scale
-            total_nutrition["fat"] += info["fat"] * scale
-            total_nutrition["carbs"] += info["carbs"] * scale
-
-        # Food Quality Prediction
-        quality_result = quality_model(image_path)[0]
-        names = quality_result.names
-
-        if hasattr(quality_result, "probs") and quality_result.probs is not None:
-            confs = quality_result.probs.data.cpu().numpy()
-            cls_id = int(np.argmax(confs))
-            conf = float(confs[cls_id])
-            class_name = names[cls_id].lower() if isinstance(names, list) else names.get(cls_id, "").lower()
-
-            quality_label = "Good" if class_name == "good" and conf > 0.5 else "Bad"
-        else:
-            quality_label = "Bad"
-
-        # Final response
-        result = {
-            "annotated_image_url": cloud_url,
-            "food_quality": quality_label,
-            "nutritional_summary": food_data,
-            "total": {
-                "calories": round(total_nutrition["calories"], 1),
-                "protein": round(total_nutrition["protein"], 1),
-                "fat": round(total_nutrition["fat"], 1),
-                "carbs": round(total_nutrition["carbs"], 1)
-            }
-        }
-
-        return jsonify(result)
+        return render_template_string(f"""
+            <html>
+            <head><title>Confirm Quantities</title></head>
+            <body style="font-family:sans-serif;text-align:center;">
+                <h2>Confirm Quantity for Detected Items</h2>
+                <form action="/calculate" method="POST">
+                    {quantity_form}
+                    <input type="hidden" name="image_url" value="{cloud_url}">
+                    <input type="hidden" name="local_path" value="{annotated_path}">
+                    <br><input type="submit" value="Calculate Nutrition">
+                </form>
+                <img src="{cloud_url}" width="80%">
+            </body>
+            </html>
+        """)
 
     return '''
-        <h2>Upload a Food Image</h2>
+        <h2>Upload a Food Image for Nutrition Analysis</h2>
         <form method="post" enctype="multipart/form-data">
             <input type="file" name="image" accept="image/*" required>
-            <input type="submit" value="Analyze">
+            <input type="submit" value="Predict">
         </form>
     '''
+
+@app.route("/calculate", methods=["POST"])
+def calculate_nutrition():
+    total_nutrition = {"calories": 0, "protein": 0, "fat": 0, "carbs": 0}
+    cloud_url = request.form["image_url"]
+    local_path = request.form["local_path"]
+    food_data = {}
+
+    for item in nutrition_info:
+        qty = request.form.get(item)
+        if qty:
+            try:
+                qty = float(qty)
+                info = nutrition_info[item]
+                scale = qty if info["type"] == "count" else qty / 100
+
+                food_data[item] = {
+                    "calories": round(info["calories"] * scale, 1),
+                    "protein": round(info["protein"] * scale, 1),
+                    "fat": round(info["fat"] * scale, 1),
+                    "carbs": round(info["carbs"] * scale, 1),
+                    "quantity": qty,
+                    "unit": info["type"]
+                }
+
+                total_nutrition["calories"] += info["calories"] * scale
+                total_nutrition["protein"] += info["protein"] * scale
+                total_nutrition["fat"] += info["fat"] * scale
+                total_nutrition["carbs"] += info["carbs"] * scale
+            except:
+                continue
+
+    total_calories = round(total_nutrition["calories"], 1)
+
+    # Load image from Cloudinary URL
+    response = urllib.request.urlopen(cloud_url)
+    img_array = np.asarray(bytearray(response.read()), dtype=np.uint8)
+    image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+
+    # Annotate image with total calories
+    cv2.putText(image, f"Total Calories: {total_calories} kcal", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+
+    # Save final annotated image
+    os.makedirs("uploads", exist_ok=True)
+    final_path = os.path.join("uploads", f"final_{uuid.uuid4().hex}.jpg")
+    cv2.imwrite(final_path, image)
+
+    # Upload final image to Cloudinary
+    final_uploaded = cloudinary.uploader.upload(final_path)
+    final_url = final_uploaded["secure_url"]
+
+    # === Food Quality Classification using .probs ===
+    quality_result = quality_model(local_path)[0]
+    names = quality_result.names
+
+    if hasattr(quality_result, "probs") and quality_result.probs is not None:
+        confs = quality_result.probs.data.cpu().numpy()
+        cls_id = int(np.argmax(confs))
+        conf = float(confs[cls_id])
+        class_name = names[cls_id].lower() if isinstance(names, list) else names.get(cls_id, "").lower()
+        print(f"Food Quality Prediction → {class_name}, Confidence: {conf:.2f}")
+
+        if class_name == "good" and conf > 0.5:
+            quality_label = "Good"
+        else:
+            quality_label = "Bad"
+    else:
+        print("No classification probabilities found — defaulting to Bad")
+        quality_label = "Bad"
+
+    result = {
+        "annotated_image_url": final_url,
+        "food_quality": quality_label,
+        "nutritional_summary": food_data,
+        "total": {
+            "calories": total_calories,
+            "protein": round(total_nutrition["protein"], 1),
+            "fat": round(total_nutrition["fat"], 1),
+            "carbs": round(total_nutrition["carbs"], 1)
+        }
+    }
+
+    return jsonify(result)
 
 @app.route("/uploads/<filename>")
 def uploaded_file(filename):
