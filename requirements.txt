@@ -1,6 +1,7 @@
 flask
 ultralytics
 torch
+cloudinary
 werkzeug
 Pillow
 numpy
