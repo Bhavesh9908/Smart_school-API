@@ -1,5 +1,6 @@
 flask
 ultralytics
+torch==2.2.1+cpu
 cloudinary
 werkzeug
 Pillow
