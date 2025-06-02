@@ -10,9 +10,10 @@ WORKDIR /app
 # Copy requirements first
 COPY requirements.txt .
 
-# Install PyTorch CPU and dependencies
+# Install PyTorch and torchvision from official source
 RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir torch==2.2.1+cpu -f https://download.pytorch.org/whl/torch_stable.html \
+ && pip install --no-cache-dir torch==2.2.1+cpu torchvision==0.17.1+cpu \
+      -f https://download.pytorch.org/whl/cpu/torch_stable.html \
  && pip install --no-cache-dir -r requirements.txt \
  && find /usr/local/lib/python3.11 -name '*.pyc' -delete \
  && find /usr/local/lib/python3.11 -name '__pycache__' -type d -exec rm -r {} +
