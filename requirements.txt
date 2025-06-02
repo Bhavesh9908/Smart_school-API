@@ -1,9 +1,8 @@
-flask
 ultralytics
-torch==2.2.1+cpu
 cloudinary
 werkzeug
 Pillow
 numpy
 gunicorn
 opencv-python-headless
+flask
