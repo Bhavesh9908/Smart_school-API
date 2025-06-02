@@ -5,8 +5,13 @@ __pycache__/
 *.log
 .env
 .git
-*.md
-tests/
+*.ipynb
 notebooks/
 data/
+datasets/
+models/
+*.h5
+*.pth
+*.onnx
 venv/
+.idea/
