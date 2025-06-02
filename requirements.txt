@@ -1,6 +1,7 @@
 flask
-ultralytics
-torch==2.2.1+cpu
+ultralytics==8.1.5
+torch==2.1.0
+torchvision==0.16.0
 cloudinary
 werkzeug
 Pillow
