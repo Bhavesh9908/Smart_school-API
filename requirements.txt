@@ -1,3 +1,4 @@
+flask
 ultralytics
 cloudinary
 werkzeug
@@ -5,4 +6,3 @@ Pillow
 numpy
 gunicorn
 opencv-python-headless
-flask
